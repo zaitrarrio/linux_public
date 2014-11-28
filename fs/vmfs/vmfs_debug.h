@@ -4,7 +4,7 @@
 
 /* This makes a dentry parent/child name pair. Useful for debugging printk's */
 #define DENTRY_PATH(dentry) \
-	((dentry)->d_parent->d_name.name, (dentry)->d_name.name)
+	(dentry)->d_parent->d_name.name, (dentry)->d_name.name
 
 /*
  * safety checks that should never happen ???

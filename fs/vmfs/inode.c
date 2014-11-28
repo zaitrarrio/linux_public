@@ -30,7 +30,6 @@
 #include "vmfsno.h"
 #include "vmfs_mount.h"
 
-#include <asm/system.h>
 #include <asm/uaccess.h>
 #include <linux/version.h>
 
@@ -326,6 +325,7 @@ static void vmfs_delete_inode(struct inode *ino)
 {
 	DEBUG1("ino=%ld\n", ino->i_ino);
 	truncate_inode_pages(&ino->i_data, 0);
+	clear_inode(ino);
 	mutex_lock(&vmfs_mutex);
 	if (vmfs_close(ino))
 		PARANOIA("could not close inode %ld\n", ino->i_ino);
@@ -387,7 +387,7 @@ static int vmfs_fill_super(struct super_block *sb, void *raw_data_unused,
 
 	/* Allocate global temp buffer and some superblock helper structs */
 	/* FIXME: move these to the vmfs_sb_info struct */
-	VERBOSE("alloc chunk = %u\n", sizeof(struct vmfs_ops) +
+	VERBOSE("alloc chunk = %zu\n", sizeof(struct vmfs_ops) +
 		sizeof(struct vmfs_mount_data_kernel));
 	mem = kmalloc(sizeof(struct vmfs_ops) +
 		      sizeof(struct vmfs_mount_data_kernel), GFP_KERNEL);
@@ -486,25 +486,14 @@ int vmfs_notify_change(struct dentry *dentry, struct iattr *attr)
 		goto out;
 
 	error = -EPERM;
-#ifdef CONFIG_UIDGID_STRICT_TYPE_CHECKS
+
 	if ((attr->ia_valid & ATTR_UID) &&
 	    (attr->ia_uid.val != (server->mnt->uid).val))
 		goto out;
-#else
-	if ((attr->ia_valid & ATTR_UID) &&
-	    (attr->ia_uid != server->mnt->uid))
-		goto out;
-#endif
 
-#ifdef CONFIG_UIDGID_STRICT_TYPE_CHECKS
 	if ((attr->ia_valid & ATTR_GID) &&
 	    ((attr->ia_gid).val != (server->mnt->gid).val))
 		goto out;
-#else
-	if ((attr->ia_valid & ATTR_GID) &&
-	    (attr->ia_gid != server->mnt->gid))
-		goto out;
-#endif
 
 	if ((attr->ia_valid & ATTR_MODE) && (attr->ia_mode & ~mask))
 		goto out;

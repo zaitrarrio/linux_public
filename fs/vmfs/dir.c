@@ -24,7 +24,7 @@
 #include "vmfs_debug.h"
 #include "proto.h"
 
-static int vmfs_readdir(struct file *, void *, filldir_t);
+static int vmfs_readdir(struct file *, struct dir_context *);
 static int vmfs_dir_open(struct inode *, struct file *);
 
 static struct dentry *vmfs_lookup(struct inode *, struct dentry *,
@@ -41,7 +41,7 @@ static int vmfs_link(struct dentry *, struct inode *, struct dentry *);
 
 const struct file_operations vmfs_dir_operations = {
 	.read = generic_read_dir,
-	.readdir = vmfs_readdir,
+	.iterate = vmfs_readdir,
 	.unlocked_ioctl = vmfs_unlocked_ioctl,
 	.open = vmfs_dir_open,
 };
@@ -77,7 +77,7 @@ const struct inode_operations vmfs_dir_inode_operations_unix = {
  *
  * The cache code is almost directly taken from ncpfs
  */
-static int vmfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
+static int vmfs_readdir(struct file *filp, struct dir_context *ctx)
 {
 	struct dentry *dentry = filp->f_path.dentry;
 	struct inode *dir = dentry->d_inode;
@@ -97,17 +97,8 @@ static int vmfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
 
 	mutex_lock(&vmfs_mutex);
 
-	switch ((unsigned int)filp->f_pos) {
-	case 0:
-		if (filldir(dirent, ".", 1, 0, dir->i_ino, DT_DIR) < 0)
-			goto out;
-		filp->f_pos = 1;
-		/* fallthrough */
-	case 1:
-	       if (filldir(dirent, "..", 2, 1, parent_ino(dentry), DT_DIR) < 0)
-			goto out;
-		filp->f_pos = 2;
-	}
+	if (!dir_emit_dots(filp, ctx))
+		return 0;
 
 	/*
 	 * Make sure our inode is up-to-date.
@@ -129,7 +120,7 @@ static int vmfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		goto init_cache;
 	}
 
-	if (filp->f_pos == 2) {
+	if (ctx->pos == 2) {
 		if (jiffies - ctl.head.time >= VMFS_MAX_AGE(server))
 			goto init_cache;
 
@@ -144,10 +135,10 @@ static int vmfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
 		 */
 	}
 
-	if (filp->f_pos > ctl.head.end)
+	if (ctx->pos > ctl.head.end)
 		goto finished;
 
-	ctl.fpos = filp->f_pos + (VMFS_DIRCACHE_START - 2);
+	ctl.fpos = ctx->pos + (VMFS_DIRCACHE_START - 2);
 	ctl.ofs = ctl.fpos / VMFS_DIRCACHE_SIZE;
 	ctl.idx = ctl.fpos % VMFS_DIRCACHE_SIZE;
 
@@ -169,15 +160,15 @@ static int vmfs_readdir(struct file *filp, void *dirent, filldir_t filldir)
 			if (!dent)
 				goto invalid_cache;
 
-			res = filldir(dirent, dent->d_name.name,
-				      dent->d_name.len, filp->f_pos,
-				      dent->d_inode->i_ino, DT_UNKNOWN);
+			res = !dir_emit(ctx, dent->d_name.name,
+					dent->d_name.len,
+					dent->d_inode->i_ino, DT_UNKNOWN);
 			dput(dent);
 			if (res)
 				goto finished;
-			filp->f_pos += 1;
+			ctx->pos += 1;
 			ctl.idx += 1;
-			if (filp->f_pos > ctl.head.end)
+			if (ctx->pos > ctl.head.end)
 				goto finished;
 		}
 		if (ctl.page) {
@@ -208,7 +199,7 @@ init_cache:
 	ctl.filled = 0;
 	ctl.valid = 1;
 read_really:
-	result = server->ops->readdir(filp, dirent, filldir, &ctl);
+	result = server->ops->readdir(filp, ctx, &ctl);
 	if (result == -ERESTARTSYS && page)
 		ClearPageUptodate(page);
 	if (ctl.idx == -1)

@@ -19,7 +19,7 @@
 #include <linux/aio.h>
 
 #include <asm/uaccess.h>
-#include <asm/system.h>
+/*#include <asm/system.h>*/
 #include <linux/version.h>
 
 #include "vmfsno.h"
@@ -225,15 +225,14 @@ vmfs_updatepage(struct file *file, struct page *page, unsigned long offset,
 }
 
 static ssize_t
-vmfs_file_aio_read(struct kiocb *iocb, const struct iovec *iov,
-		   unsigned long nr_segs, loff_t pos)
+vmfs_file_read_iter(struct kiocb *iocb, struct iov_iter *iov)
 {
 	struct file *file = iocb->ki_filp;
 	struct dentry *dentry = file->f_path.dentry;
 	ssize_t status;
 
-	VERBOSE("file %s/%s, count=%lu@%lu\n", DENTRY_PATH(dentry),
-		(unsigned long)iocb->ki_left, (unsigned long)pos);
+	VERBOSE("file %s/%s, count=%llu@%zu\n", DENTRY_PATH(dentry),
+		iocb->ki_pos, iocb->ki_nbytes);
 
 	mutex_lock(&vmfs_mutex);
 	status = vmfs_revalidate_inode(dentry);
@@ -248,7 +247,7 @@ vmfs_file_aio_read(struct kiocb *iocb, const struct iovec *iov,
 		(long)dentry->d_inode->i_size,
 		dentry->d_inode->i_flags, dentry->d_inode->i_atime.tv_sec);
 
-	status = generic_file_aio_read(iocb, iov, nr_segs, pos);
+	status = generic_file_read_iter(iocb, iov);
 out:
 	return status;
 }
@@ -282,7 +281,7 @@ vmfs_file_splice_read(struct file *file, loff_t *ppos,
 	struct dentry *dentry = file->f_path.dentry;
 	ssize_t status;
 
-	VERBOSE("file %s/%s, pos=%lld, count=%u\n",
+	VERBOSE("file %s/%s, pos=%lld, count=%zu\n",
 		DENTRY_PATH(dentry), *ppos, count);
 
 	mutex_lock(&vmfs_mutex);
@@ -352,16 +351,14 @@ const struct address_space_operations vmfs_file_aops = {
  * Write to a file (through the page cache).
  */
 static ssize_t
-vmfs_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
-		    unsigned long nr_segs, loff_t pos)
+vmfs_file_write_iter(struct kiocb *iocb, struct iov_iter *iov)
 {
 	struct file *file = iocb->ki_filp;
 	struct dentry *dentry = file->f_path.dentry;
 	ssize_t result;
 
-	VERBOSE("file %s/%s, count=%lu@%lu\n",
-		DENTRY_PATH(dentry),
-		(unsigned long)iocb->ki_left, (unsigned long)pos);
+	VERBOSE("file %s/%s, count=%llu@%zu\n", DENTRY_PATH(dentry),
+		iocb->ki_pos, iocb->ki_nbytes);
 
 	mutex_lock(&vmfs_mutex);
 	result = vmfs_revalidate_inode(dentry);
@@ -376,22 +373,15 @@ vmfs_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	result = vmfs_open(dentry, 0, VMFS_O_WRONLY);
 	mutex_unlock(&vmfs_mutex);
 
-	DEBUG1("1\n");
-
 	if (result)
 		goto out;
 
-	if (iocb->ki_left > 0) {
-		DEBUG1("1\n");
+	result = generic_file_write_iter(iocb, iov);
+	VERBOSE("pos=%ld, size=%ld, mtime=%ld, atime=%ld\n",
+		(long)file->f_pos, (long)dentry->d_inode->i_size,
+		dentry->d_inode->i_mtime.tv_sec,
+		dentry->d_inode->i_atime.tv_sec);
 
-		result = generic_file_aio_write(iocb, iov, nr_segs, pos);
-		VERBOSE("pos=%ld, size=%ld, mtime=%ld, atime=%ld\n",
-			(long)file->f_pos, (long)dentry->d_inode->i_size,
-			dentry->d_inode->i_mtime.tv_sec,
-			dentry->d_inode->i_atime.tv_sec);
-
-		DEBUG1("2\n");
-	}
 out:
 	DEBUG1("return\n");
 	return result;
@@ -481,10 +471,10 @@ const struct file_operations vmfs_file_operations = {
 #else
 	.llseek = remote_llseek,
 #endif
-	.read = do_sync_read,
-	.aio_read = vmfs_file_aio_read,
-	.write = do_sync_write,
-	.aio_write = vmfs_file_aio_write,
+	.read = new_sync_read,
+	.write = new_sync_write,
+	.read_iter = vmfs_file_read_iter,
+	.write_iter = vmfs_file_write_iter,
 	.unlocked_ioctl = vmfs_unlocked_ioctl,
 	.mmap = vmfs_file_mmap,
 	.open = vmfs_file_open,

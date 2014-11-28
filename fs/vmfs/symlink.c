@@ -17,7 +17,6 @@
 #include <linux/namei.h>
 
 #include <asm/uaccess.h>
-#include <asm/system.h>
 
 #include "vmfsno.h"
 #include "vmfs_fs.h"

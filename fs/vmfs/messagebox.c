@@ -32,7 +32,7 @@
 
 
 /* Define this to make the driver use PIO rather than memory mapped access */
-/* #define USE_PIO */
+#define USE_PIO
 
 /* Define this to use interrupts rather than polling */
 #define USE_IRQ
@@ -102,14 +102,14 @@ MessageBox *mb_new(phys_addr_t dev_base, uint32_t dev_irq)
 {
 	MessageBox *mb;
 
-	DEBUG1("initialising at 0x%x ...\n", dev_base);
+	DEBUG1("initialising at 0x%llx ...\n", dev_base);
 
 	mb = (MessageBox *) kmalloc(sizeof(MessageBox), GFP_KERNEL);
 
 	/* Map the messagebox registers and buffer int VM */
 
 	if (check_mem_region(dev_base, MBOX_DEVICE_SIZE)) {
-		DEBUG1("i/o space at 0x%x already in use\n", dev_base);
+		DEBUG1("i/o space at 0x%llx already in use\n", dev_base);
 		return NULL;
 	}
 
