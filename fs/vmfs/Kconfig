@@ -11,9 +11,3 @@ config VMFS_DEV_BASE
 	hex "VMFS base address"
 	depends on VMFS_FS
 	default 0x8021010000
-
-config VMFS_IRQ
-	int "VMFS IRQ"
-	depends on VMFS_FS
-	default 311
-

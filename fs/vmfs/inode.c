@@ -26,6 +26,8 @@
 #include <linux/highuid.h>
 #include <linux/sched.h>
 #include <linux/version.h>
+#include <linux/of_address.h>
+#include <linux/of_irq.h>
 #include "vmfs_fs.h"
 #include "vmfsno.h"
 #include "vmfs_mount.h"
@@ -605,16 +607,32 @@ static struct file_system_type vmfs_fs_type = {
 
 static int __init init_vmfs_fs(void)
 {
+	phys_addr_t dev_base = CONFIG_VMFS_DEV_BASE;
+	uint32_t dev_irq = -1;
 	int err;
+
 	DEBUG1("registering ...\n");
 
 	err = init_inodecache();
 	if (err)
 		goto out_inode;
 
+	if (IS_ENABLED(CONFIG_OF)) {
+		struct device_node *np;
+
+		np = of_find_compatible_node(NULL, NULL, "arm,messagebox");
+		if (np) {
+			struct resource res;
+
+			if (of_address_to_resource(np, 0, &res) == 0) {
+				dev_base = res.start;
+			}
+		}
+	}
+
 	/* map the message box device into memory */
 
-	mbox = mb_new(CONFIG_VMFS_DEV_BASE, CONFIG_VMFS_IRQ);
+	mbox = mb_new(dev_base, dev_irq);
 
 	if (mbox == NULL) {
 		err = -1;
